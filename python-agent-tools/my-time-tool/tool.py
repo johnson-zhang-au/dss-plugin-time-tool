@@ -6,6 +6,8 @@ from utils.logging import logger
 
 
 class TimeTool(BaseAgentTool):
+    DEFAULT_TIMEZONE = "UTC"
+
     def set_config(self, config, plugin_config):
         self.config = config
         self.setup_logging()
@@ -38,11 +40,13 @@ class TimeTool(BaseAgentTool):
                     },
                     "timezone": {
                         "type": "string",
-                        "description": "IANA timezone name (e.g., 'America/New_York', 'Europe/London') (required for get_current_time)"
+                        "description": "IANA timezone name (e.g., 'America/New_York', 'Europe/London')",
+                        "default": self.DEFAULT_TIMEZONE
                     },
                     "source_timezone": {
                         "type": "string",
-                        "description": "Source IANA timezone name (required for convert_time)"
+                        "description": "Source IANA timezone name",
+                        "default": self.DEFAULT_TIMEZONE
                     },
                     "time": {
                         "type": "string",
@@ -50,7 +54,8 @@ class TimeTool(BaseAgentTool):
                     },
                     "target_timezone": {
                         "type": "string",
-                        "description": "Target IANA timezone name (required for convert_time)"
+                        "description": "Target IANA timezone name",
+                        "default": self.DEFAULT_TIMEZONE
                     }
                 },
                 "required": ["action"]
@@ -74,18 +79,17 @@ class TimeTool(BaseAgentTool):
 
     def get_current_time(self, args):
         logger.debug("Starting 'get_current_time' action.")
-        if "timezone" not in args:
-            logger.error("Missing required field: timezone")
-            raise ValueError("Missing required field: timezone")
+        timezone_name = args.get("timezone", self.DEFAULT_TIMEZONE)
+        logger.debug(f"Using timezone: {timezone_name}")
 
         try:
-            timezone = ZoneInfo(args["timezone"])
+            timezone = ZoneInfo(timezone_name)
             current_time = datetime.now(timezone)
-            logger.info(f"Current time in {args['timezone']}: {current_time}")
+            logger.info(f"Current time in {timezone_name}: {current_time}")
 
             return {
                 "output": {
-                    "timezone": args["timezone"],
+                    "timezone": timezone_name,
                     "datetime": current_time.isoformat(),
                     "is_dst": bool(current_time.dst())
                 }
@@ -96,11 +100,9 @@ class TimeTool(BaseAgentTool):
 
     def convert_time(self, args):
         logger.debug("Starting 'convert_time' action.")
-        required_fields = ["source_timezone", "time", "target_timezone"]
-        for field in required_fields:
-            if field not in args:
-                logger.error(f"Missing required field: {field}")
-                raise ValueError(f"Missing required field: {field}")
+        if "time" not in args:
+            logger.error("Missing required field: time")
+            raise ValueError("Missing required field: time")
 
         try:
             # Parse the input time
@@ -110,9 +112,12 @@ class TimeTool(BaseAgentTool):
                 logger.error(f"Invalid time format: {args['time']}. Expected HH:MM")
                 raise ValueError(f"Invalid time format: {args['time']}. Expected HH:MM")
 
-            # Get current date in source timezone
-            source_tz = ZoneInfo(args["source_timezone"])
-            target_tz = ZoneInfo(args["target_timezone"])
+            # Get timezones with defaults
+            source_tz_name = args.get("source_timezone", self.DEFAULT_TIMEZONE)
+            target_tz_name = args.get("target_timezone", self.DEFAULT_TIMEZONE)
+            
+            source_tz = ZoneInfo(source_tz_name)
+            target_tz = ZoneInfo(target_tz_name)
             
             now = datetime.now(source_tz)
             source_time = datetime(
@@ -137,17 +142,17 @@ class TimeTool(BaseAgentTool):
             else:
                 time_diff_str = f"{hours_difference:+.2f}".rstrip("0").rstrip(".") + "h"
 
-            logger.info(f"Time converted from {args['source_timezone']} to {args['target_timezone']}")
+            logger.info(f"Time converted from {source_tz_name} to {target_tz_name}")
 
             return {
                 "output": {
                     "source": {
-                        "timezone": args["source_timezone"],
+                        "timezone": source_tz_name,
                         "datetime": source_time.isoformat(),
                         "is_dst": bool(source_time.dst())
                     },
                     "target": {
-                        "timezone": args["target_timezone"],
+                        "timezone": target_tz_name,
                         "datetime": target_time.isoformat(),
                         "is_dst": bool(target_time.dst())
                     },
